@@ -16,6 +16,8 @@ from sklearn.ensemble import RandomForestRegressor, HistGradientBoostingRegresso
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score, mean_squared_error
 from sklearn.preprocessing import LabelEncoder
+from mlxtend.frequent_patterns import apriori, association_rules
+from mlxtend.preprocessing import TransactionEncoder
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -217,6 +219,66 @@ def train_models(X, y):
         }
     
     return results, X_train, X_test, y_train, y_test
+
+@st.cache_data
+def generate_association_rules(assistance_df, min_support=0.01, min_confidence=0.5):
+    """
+    Generate association rules from assistance data using Apriori algorithm.
+    
+    Parameters:
+    - assistance_df: DataFrame with assistance data
+    - min_support: Minimum support threshold (default 0.01 = 1%)
+    - min_confidence: Minimum confidence threshold (default 0.5 = 50%)
+    
+    Returns:
+    - rules_df: DataFrame with association rules and metrics
+    - transactions: List of transactions for visualization
+    """
+    # Transform data into transaction format
+    # Group by incident_id to get items distributed together
+    transactions = assistance_df.groupby('incident_id')['fnfi_name'].apply(list).tolist()
+    
+    # Remove duplicates within each transaction
+    transactions = [list(set(trans)) for trans in transactions]
+    
+    # Filter out transactions with only one item (can't generate rules)
+    transactions = [trans for trans in transactions if len(trans) > 1]
+    
+    if len(transactions) == 0:
+        return None, transactions
+    
+    # Encode transactions into binary matrix
+    te = TransactionEncoder()
+    te_ary = te.fit(transactions).transform(transactions)
+    df_transactions = pd.DataFrame(te_ary, columns=te.columns_)
+    
+    # Generate frequent itemsets using Apriori
+    try:
+        frequent_itemsets = apriori(df_transactions, min_support=min_support, use_colnames=True, max_len=3)
+        
+        if len(frequent_itemsets) == 0:
+            return None, transactions
+        
+        # Generate association rules
+        rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=min_confidence)
+        
+        # Sort by confidence and lift
+        rules = rules.sort_values(['confidence', 'lift'], ascending=[False, False])
+        
+        # Format the rules for better readability
+        rules['antecedents_str'] = rules['antecedents'].apply(lambda x: ', '.join(list(x)))
+        rules['consequents_str'] = rules['consequents'].apply(lambda x: ', '.join(list(x)))
+        rules['rule'] = rules['antecedents_str'] + ' → ' + rules['consequents_str']
+        
+        # Calculate percentage metrics
+        rules['support_pct'] = rules['support'] * 100
+        rules['confidence_pct'] = rules['confidence'] * 100
+        
+        return rules, transactions
+    
+    except Exception as e:
+        st.warning(f"Error generating association rules: {str(e)}")
+        return None, transactions
 
 def main():
     st.markdown('<h1 class="main-header">🌊 Disaster Assistance Predictive Analysis</h1>', unsafe_allow_html=True)
@@ -600,6 +662,134 @@ def show_actionable_insights(data):
             st.plotly_chart(fig, use_container_width=True)
         
         st.info(f"💡 **Action**: Design standardized pre-packed kits for '{disaster_select}' with the most common items.")
+        
+        # Association Rule Mining for Resource Pre-Positioning
+        st.markdown("### 📊 Association Rule Mining: Item Bundling Analysis")
+        st.markdown("""
+        **Objective**: Identify which relief items are frequently distributed together to optimize pre-packed kit design and minimize stockouts.
+        
+        This analysis uses the Apriori algorithm to discover patterns in item co-distribution across disaster incidents.
+        """)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            min_support = st.slider("Minimum Support (%)", min_value=0.1, max_value=50.0, value=1.0, step=0.1) / 100
+        with col2:
+            min_confidence = st.slider("Minimum Confidence (%)", min_value=10, max_value=100, value=50, step=5) / 100
+        
+        with st.spinner("Generating association rules..."):
+            rules_df, transactions = generate_association_rules(
+                data['assistance'], 
+                min_support=min_support, 
+                min_confidence=min_confidence
+            )
+        
+        if rules_df is not None and len(rules_df) > 0:
+            st.success(f"✅ Found {len(rules_df)} association rules!")
+            
+            # Display top rules
+            st.markdown("#### 🎯 Top Association Rules")
+            
+            # Filter and display top rules by confidence
+            top_rules = rules_df.head(20).copy()
+            
+            # Create a formatted display
+            display_cols = ['rule', 'support_pct', 'confidence_pct', 'lift']
+            display_df = top_rules[display_cols].copy()
+            display_df.columns = ['Association Rule', 'Support (%)', 'Confidence (%)', 'Lift']
+            display_df = display_df.round(2)
+            
+            st.dataframe(
+                display_df.style.format({
+                    'Support (%)': '{:.2f}%',
+                    'Confidence (%)': '{:.2f}%',
+                    'Lift': '{:.2f}'
+                }),
+                use_container_width=True,
+                height=400
+            )
+            
+            # Highlight high-confidence rules
+            high_conf_rules = rules_df[rules_df['confidence'] >= 0.95]
+            if len(high_conf_rules) > 0:
+                st.markdown("#### ⭐ High-Confidence Rules (≥95% Confidence)")
+                st.markdown("These rules indicate very strong associations that can be used for standardized kit design:")
+                
+                for idx, rule in high_conf_rules.head(10).iterrows():
+                    st.markdown(f"""
+                    - **{rule['antecedents_str']}** → **{rule['consequents_str']}**
+                      - Confidence: {rule['confidence_pct']:.2f}% | Support: {rule['support_pct']:.2f}% | Lift: {rule['lift']:.2f}
+                    """)
+            
+            # Visualization
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Support vs Confidence scatter plot
+                fig = px.scatter(
+                    rules_df.head(30),
+                    x='support',
+                    y='confidence',
+                    size='lift',
+                    color='lift',
+                    hover_data=['antecedents_str', 'consequents_str'],
+                    title="Association Rules: Support vs Confidence",
+                    labels={'support': 'Support', 'confidence': 'Confidence', 'lift': 'Lift'},
+                    color_continuous_scale='Viridis'
+                )
+                fig.update_layout(height=400)
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                # Top rules by lift
+                top_lift = rules_df.nlargest(15, 'lift')
+                fig = px.bar(
+                    top_lift,
+                    x='lift',
+                    y='rule',
+                    orientation='h',
+                    title="Top 15 Rules by Lift Score",
+                    labels={'lift': 'Lift Score', 'rule': 'Association Rule'},
+                    color='confidence',
+                    color_continuous_scale='Blues'
+                )
+                fig.update_layout(height=400, yaxis={'categoryorder': 'total ascending'})
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Key insights
+            st.markdown("#### 💡 Key Insights for Resource Pre-Positioning")
+            
+            # Find the rule with highest confidence
+            best_rule = rules_df.iloc[0]
+            st.info(f"""
+            **Highest Confidence Rule**: {best_rule['antecedents_str']} → {best_rule['consequents_str']}
+            - **Confidence**: {best_rule['confidence_pct']:.2f}% - This means when {best_rule['antecedents_str']} are distributed, 
+              {best_rule['consequents_str']} is included {best_rule['confidence_pct']:.2f}% of the time.
+            - **Support**: {best_rule['support_pct']:.2f}% - This pattern occurs in {best_rule['support_pct']:.2f}% of all transactions.
+            - **Lift**: {best_rule['lift']:.2f} - This rule is {best_rule['lift']:.2f}x more likely than random chance.
+            
+            **Actionable Recommendation**: Design pre-packed kits that include {best_rule['antecedents_str']} together with {best_rule['consequents_str']} 
+            to minimize stockouts and response lag.
+            """)
+            
+            # Statistics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Transactions", len(transactions))
+            with col2:
+                st.metric("Average Items per Transaction", f"{np.mean([len(t) for t in transactions]):.1f}")
+            with col3:
+                st.metric("Unique Items", data['assistance']['fnfi_name'].nunique())
+        
+        else:
+            st.warning("""
+            ⚠️ No association rules found with the current thresholds.
+            
+            **Suggestions**:
+            - Lower the minimum support threshold (try 0.5% or lower)
+            - Lower the minimum confidence threshold (try 30% or lower)
+            - Ensure you have sufficient transaction data
+            """)
         
         # Seasonal analysis
         st.markdown("### Seasonal Disaster Patterns")
