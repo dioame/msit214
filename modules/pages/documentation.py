@@ -148,9 +148,9 @@ def show_documentation(data):
     has_enough_data, merged_clean = validate_training_data(data)
     
     if has_enough_data:
-        X, y, le_disaster, feature_cols = prepare_model_data(merged_clean)
+        X, y, le_disaster, feature_cols, scaler, log_transform_applied, _ = prepare_model_data(merged_clean)
         with st.spinner("Training models for documentation..."):
-            results, _, _, _, _ = train_models(X, y)
+            results, _, _, _, _, _ = train_models(X, y, scaler, log_transform_applied)
         
         # Model Comparison Table
         model_results = []

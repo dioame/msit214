@@ -8,15 +8,35 @@ SHEET_NAMES = ['affected', 'assistance', 'evacuation']
 
 # Model parameters
 TEST_SIZE = 0.2
+VALIDATION_SIZE = 0.2  # Size of validation set relative to total data
 RANDOM_STATE = 42
 MIN_RECORDS_FOR_TRAINING = 50
 
-# Random Forest parameters
-RF_N_ESTIMATORS = 100
-RF_MAX_DEPTH = 10
+# Outlier removal parameters
+OUTLIER_METHOD = 'iqr'  # 'iqr' or 'zscore'
+OUTLIER_Z_THRESHOLD = 3.0  # For z-score method
+OUTLIER_IQR_MULTIPLIER = 1.5  # For IQR method
 
-# Hist Gradient Boosting parameters
-HGB_MAX_ITER = 100
+# Feature engineering
+USE_LOG_TRANSFORM = True  # Log transform target variable to handle skewness
+USE_FEATURE_SCALING = True  # Standardize features
+
+# Random Forest parameters (reduced complexity to prevent overfitting)
+RF_N_ESTIMATORS = 50  # Reduced from 100
+RF_MAX_DEPTH = 5  # Reduced from 10
+RF_MIN_SAMPLES_SPLIT = 10  # Minimum samples to split
+RF_MIN_SAMPLES_LEAF = 5  # Minimum samples in leaf
+RF_MAX_FEATURES = 'sqrt'  # Limit features per split
+
+# Hist Gradient Boosting parameters (with early stopping)
+HGB_MAX_ITER = 200  # Increased for early stopping
+HGB_LEARNING_RATE = 0.1  # Learning rate
+HGB_EARLY_STOPPING = True  # Enable early stopping
+HGB_VALIDATION_FRACTION = 0.1  # Validation fraction for early stopping
+HGB_N_ITER_NO_CHANGE = 10  # Early stopping patience
+
+# Ridge Regression parameters
+RIDGE_ALPHA = 1.0  # Regularization strength
 
 # Association Rule Mining defaults
 DEFAULT_MIN_SUPPORT = 0.01  # 1%

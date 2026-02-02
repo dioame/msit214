@@ -4,6 +4,7 @@ Predictions page display functions
 
 import streamlit as st
 import pandas as pd
+import numpy as np
 
 
 def show_predictions(data):
@@ -50,7 +51,23 @@ def show_predictions(data):
         # Ensure correct column order
         prediction_input = prediction_input[feature_cols]
         
-        predicted_cost = model.predict(prediction_input)[0]
+        # Apply feature scaling if it was used during training
+        scaler = st.session_state.get('scaler', None)
+        if scaler is not None:
+            # Only scale numeric columns
+            numeric_cols = prediction_input.select_dtypes(include=[np.number]).columns
+            if len(numeric_cols) > 0:
+                prediction_input[numeric_cols] = scaler.transform(prediction_input[numeric_cols])
+        
+        # Make prediction
+        predicted_cost_log = model.predict(prediction_input)[0]
+        
+        # Reverse log transformation if it was applied during training
+        log_transform_applied = st.session_state.get('log_transform_applied', False)
+        if log_transform_applied:
+            predicted_cost = np.expm1(predicted_cost_log)
+        else:
+            predicted_cost = predicted_cost_log
         
         st.success(f"### Predicted Assistance Cost: **₱{predicted_cost:,.2f}**")
         
