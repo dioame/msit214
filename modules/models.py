@@ -16,7 +16,7 @@ from modules.config import (
     HGB_VALIDATION_FRACTION, HGB_N_ITER_NO_CHANGE,
     MIN_RECORDS_FOR_TRAINING, OUTLIER_METHOD, OUTLIER_Z_THRESHOLD,
     OUTLIER_IQR_MULTIPLIER, USE_LOG_TRANSFORM, USE_FEATURE_SCALING,
-    RIDGE_ALPHA
+    USE_ENHANCED_FEATURES, RIDGE_ALPHA
 )
 
 
@@ -36,11 +36,15 @@ def remove_outliers_zscore(y, threshold=3.0):
     return z_scores < threshold
 
 
-def prepare_model_data(df, remove_outliers=True):
-    """Prepare data for machine learning models with noise reduction"""
-    # Select features - check for available columns
+def prepare_model_data(df, remove_outliers=True, enhanced_features=None):
+    """Prepare data for machine learning models with noise reduction and enhanced feature engineering"""
+    # Select base features - check for available columns
     base_cols = ['person_no', 'fam_no', 'provinceid', 'municipality_id']
     feature_cols = [col for col in base_cols if col in df.columns]
+    
+    # CRITICAL: Add quantity if available (highly correlated with total_amount)
+    if 'quantity' in df.columns:
+        feature_cols.append('quantity')
     
     # Handle month and year columns
     if 'month' in df.columns:
@@ -66,7 +70,94 @@ def prepare_model_data(df, remove_outliers=True):
     df['disaster_name_encoded'] = le_disaster.fit_transform(df['disaster_name'].astype(str))
     feature_cols.append('disaster_name_encoded')
     
+    # Enhanced feature engineering for better predictions
+    if enhanced_features is None:
+        enhanced_features = USE_ENHANCED_FEATURES
+    
+    if enhanced_features:
+        # Season encoding (if available)
+        if 'season' in df.columns:
+            le_season = LabelEncoder()
+            df['season_encoded'] = le_season.fit_transform(df['season'].astype(str))
+            feature_cols.append('season_encoded')
+        
+        # Province name encoding (if available)
+        if 'province_name' in df.columns:
+            le_province = LabelEncoder()
+            df['province_name_encoded'] = le_province.fit_transform(df['province_name'].astype(str))
+            feature_cols.append('province_name_encoded')
+        
+        # Municipality name encoding (if available)
+        if 'municipality_name' in df.columns:
+            le_municipality = LabelEncoder()
+            df['municipality_name_encoded'] = le_municipality.fit_transform(df['municipality_name'].astype(str))
+            feature_cols.append('municipality_name_encoded')
+        
+        # Interaction features (multiplicative relationships)
+        if 'person_no' in df.columns and 'fam_no' in df.columns:
+            df['person_fam_ratio'] = df['person_no'] / (df['fam_no'] + 1)  # Persons per family
+            feature_cols.append('person_fam_ratio')
+            df['person_fam_product'] = df['person_no'] * df['fam_no']
+            feature_cols.append('person_fam_product')
+        
+        # Quantity-based features (if quantity exists)
+        if 'quantity' in df.columns:
+            if 'person_no' in df.columns:
+                df['quantity_per_person'] = df['quantity'] / (df['person_no'] + 1)
+                feature_cols.append('quantity_per_person')
+            if 'fam_no' in df.columns:
+                df['quantity_per_family'] = df['quantity'] / (df['fam_no'] + 1)
+                feature_cols.append('quantity_per_family')
+        
+        # Time-based features
+        if 'month' in df.columns:
+            # Cyclical encoding for month (captures seasonality)
+            df['month_sin'] = np.sin(2 * np.pi * df['month'] / 12)
+            df['month_cos'] = np.cos(2 * np.pi * df['month'] / 12)
+            feature_cols.extend(['month_sin', 'month_cos'])
+            
+            # Quarter encoding
+            df['quarter'] = ((df['month'] - 1) // 3) + 1
+            feature_cols.append('quarter')
+        
+        # Year-based features
+        if 'year' in df.columns:
+            # Years since a reference year (normalize year)
+            if df['year'].min() > 0:
+                df['years_normalized'] = df['year'] - df['year'].min()
+                feature_cols.append('years_normalized')
+        
+        # Historical aggregated features (mean assistance by various groups)
+        # Note: These use full dataset statistics - for production, calculate on training set only
+        # Province-level averages
+        if 'provinceid' in df.columns and 'total_amount' in df.columns:
+            province_avg = df.groupby('provinceid')['total_amount'].mean().to_dict()
+            df['province_avg_assistance'] = df['provinceid'].map(province_avg).fillna(0)
+            feature_cols.append('province_avg_assistance')
+        
+        # Disaster type averages
+        if 'disaster_name' in df.columns and 'total_amount' in df.columns:
+            disaster_avg = df.groupby('disaster_name')['total_amount'].mean().to_dict()
+            df['disaster_avg_assistance'] = df['disaster_name'].map(disaster_avg).fillna(0)
+            feature_cols.append('disaster_avg_assistance')
+        
+        # Year-month combinations
+        if 'year' in df.columns and 'month' in df.columns:
+            df['year_month'] = df['year'] * 12 + df['month']
+            feature_cols.append('year_month')
+        
+        # Disaster severity indicators (if person_no and fam_no are high, disaster is severe)
+        if 'person_no' in df.columns:
+            df['severity_person'] = pd.cut(df['person_no'], bins=5, labels=False).fillna(0)
+            feature_cols.append('severity_person')
+        
+        if 'fam_no' in df.columns:
+            df['severity_family'] = pd.cut(df['fam_no'], bins=5, labels=False).fillna(0)
+            feature_cols.append('severity_family')
+    
     # Prepare X and y
+    # Remove any feature columns that don't exist or are the target
+    feature_cols = [col for col in feature_cols if col in df.columns and col != 'total_amount']
     X = df[feature_cols].copy()
     y = df['total_amount'].copy()
     

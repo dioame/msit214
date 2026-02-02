@@ -29,7 +29,11 @@ def show_predictive_models(data):
         return
     
     # Show optimization info
-    st.info("🔧 **Optimizations Applied**: Outlier removal, feature scaling, log transformation, and reduced model complexity to prevent overfitting.")
+    from modules.config import USE_ENHANCED_FEATURES
+    optimizations = ["Outlier removal", "Feature scaling", "Log transformation", "Reduced model complexity"]
+    if USE_ENHANCED_FEATURES:
+        optimizations.append("Enhanced feature engineering (quantity, interactions, aggregations)")
+    st.info(f"🔧 **Optimizations Applied**: {', '.join(optimizations)} to prevent overfitting and improve accuracy.")
     
     X, y, le_disaster, feature_cols, scaler, log_transform_applied, outlier_info = prepare_model_data(merged_clean)
     

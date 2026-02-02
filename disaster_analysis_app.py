@@ -14,6 +14,7 @@ from modules.pages import (
     show_overview,
     show_data_exploration,
     show_predictive_models,
+    show_hyperparameter_tuning,
     show_actionable_insights,
     show_predictions,
     show_documentation
@@ -47,7 +48,7 @@ def main():
     page = st.sidebar.radio(
         "Select Analysis",
         ["📈 Overview", "🔍 Data Exploration", "🤖 Predictive Models", 
-         "💡 Actionable Insights", "🎯 Predictions", "📄 Documentation"]
+         "🔧 Hyperparameter Tuning", "💡 Actionable Insights", "🎯 Predictions", "📄 Documentation"]
     )
     
     # Route to appropriate page
@@ -57,6 +58,8 @@ def main():
         show_data_exploration(data)
     elif page == "🤖 Predictive Models":
         show_predictive_models(data)
+    elif page == "🔧 Hyperparameter Tuning":
+        show_hyperparameter_tuning(data)
     elif page == "💡 Actionable Insights":
         show_actionable_insights(data)
     elif page == "🎯 Predictions":

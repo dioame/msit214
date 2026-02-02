@@ -20,6 +20,7 @@ OUTLIER_IQR_MULTIPLIER = 1.5  # For IQR method
 # Feature engineering
 USE_LOG_TRANSFORM = True  # Log transform target variable to handle skewness
 USE_FEATURE_SCALING = True  # Standardize features
+USE_ENHANCED_FEATURES = True  # Use advanced feature engineering (quantity, interactions, aggregations)
 
 # Random Forest parameters (reduced complexity to prevent overfitting)
 RF_N_ESTIMATORS = 50  # Reduced from 100
@@ -30,7 +31,7 @@ RF_MAX_FEATURES = 'sqrt'  # Limit features per split
 
 # Hist Gradient Boosting parameters (with early stopping)
 HGB_MAX_ITER = 200  # Increased for early stopping
-HGB_LEARNING_RATE = 0.1  # Learning rate
+HGB_LEARNING_RATE = 0.001  # Learning rate
 HGB_EARLY_STOPPING = True  # Enable early stopping
 HGB_VALIDATION_FRACTION = 0.1  # Validation fraction for early stopping
 HGB_N_ITER_NO_CHANGE = 10  # Early stopping patience
