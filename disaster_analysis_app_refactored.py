@@ -1,5 +1,5 @@
 """
-Disaster Assistance Predictive Analysis Web Application
+Disaster Assistance Predictive Analysis Web Application (Refactored)
 A modular Streamlit app for analyzing disaster data and predicting assistance costs.
 """
 
@@ -67,3 +67,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
